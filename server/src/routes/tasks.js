@@ -5,8 +5,10 @@ const path = require("path");
 
 const router = express.Router();
 
-const DATA_FILE = path.join(__dirname, "../data/tasks.json");
-
+const DATA_FILE =
+  process.env.TASKS_DATA_FILE ||
+  path.join(__dirname, "../data/tasks.json");
+  
 // Read saved data
 async function readData() {
   const content = await fs.readFile(DATA_FILE, "utf8");

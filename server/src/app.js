@@ -4,7 +4,6 @@ const cors = require("cors");
 const taskRoutes = require("./routes/tasks");
 
 const app = express();
-const PORT = 5000;
 
 app.use(cors());
 app.use(express.json());
@@ -15,6 +14,13 @@ app.get("/", (req, res) => {
 
 app.use("/api/tasks", taskRoutes);
 
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-});
+module.exports = app;
+
+// Start the server only when this file is run directly.
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
+
+  app.listen(PORT, () => {
+    console.log(`Server running at http://localhost:${PORT}`);
+  });
+}
