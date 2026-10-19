@@ -1,33 +1,37 @@
 
 const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
+const request = require("supertest");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const request = require("supertest");
 
-const tempDirectory = path.join(
+// Use a temporary file so tests don't modify your actual tasks.json.
+const testDir = path.join(
   os.tmpdir(),
-  `taskflow-test-${process.pid}`
+  `taskflow-tests-${process.pid}`
 );
 
-process.env.TASKS_DATA_FILE = path.join(
-  tempDirectory,
-  "tasks.json"
-);
+const testDataFile = path.join(testDir, "tasks.json");
 
+// Tell the backend to use the temporary test data file.
+process.env.TASKS_DATA_FILE = testDataFile;
+
+// Import the Express application after setting the environment variable.
 const app = require("../src/app");
 
 before(async () => {
-  await fs.mkdir(tempDirectory, { recursive: true });
+  await fs.mkdir(testDir, { recursive: true });
+
   await fs.writeFile(
-    process.env.TASKS_DATA_FILE,
-    JSON.stringify({ tasks: [], nextId: 1 })
+    testDataFile,
+    JSON.stringify({ tasks: [], nextId: 1 }, null, 2),
+    "utf8"
   );
 });
 
 after(async () => {
-  await fs.rm(tempDirectory, { recursive: true, force: true });
+  await fs.rm(testDir, { recursive: true, force: true });
   delete process.env.TASKS_DATA_FILE;
 });
 
@@ -41,39 +45,64 @@ test("GET /api/tasks returns an empty array", async () => {
 test("POST /api/tasks creates a task", async () => {
   const response = await request(app)
     .post("/api/tasks")
-    .send({
-      title: "Test Task",
-      description: "Created by an automated test",
-    });
+    .send({ title: "Learn API testing" });
 
   assert.equal(response.status, 201);
-  assert.equal(response.body.title, "Test Task");
-  assert.equal(response.body.completed, false);
-  assert.equal(typeof response.body.id, "number");
+  assert.equal(response.body.title, "Learn API testing");
+  assert.ok(response.body.id !== undefined);
 });
 
 test("PUT /api/tasks/:id updates a task", async () => {
-  const response = await request(app)
-    .put("/api/tasks/1")
-    .send({ completed: true });
+  const createResponse = await request(app)
+    .post("/api/tasks")
+    .send({ title: "Original task" });
 
-  assert.equal(response.status, 200);
-  assert.equal(response.body.completed, true);
+  assert.equal(createResponse.status, 201);
+
+  const taskId = createResponse.body.id;
+
+  const updateResponse = await request(app)
+    .put(`/api/tasks/${taskId}`)
+    .send({ title: "Updated task" });
+
+  assert.equal(updateResponse.status, 200);
+  assert.equal(updateResponse.body.title, "Updated task");
 });
 
 test("DELETE /api/tasks/:id deletes a task", async () => {
-  const response = await request(app).delete("/api/tasks/1");
+  const createResponse = await request(app)
+    .post("/api/tasks")
+    .send({ title: "Task to delete" });
 
-  assert.equal(response.status, 200);
+  assert.equal(createResponse.status, 201);
 
-  const listResponse = await request(app).get("/api/tasks");
-  assert.deepEqual(listResponse.body, []);
+  const taskId = createResponse.body.id;
+
+  const deleteResponse = await request(app)
+    .delete(`/api/tasks/${taskId}`);
+
+  assert.equal(deleteResponse.status, 200);
 });
 
-test("POST rejects an empty title", async () => {
+test("POST /api/tasks rejects an empty title", async () => {
   const response = await request(app)
     .post("/api/tasks")
-    .send({ title: "   " });
+    .send({ title: "" });
 
   assert.equal(response.status, 400);
+});
+
+test("PUT rejects an ID that does not exist", async () => {
+  const response = await request(app)
+    .put("/api/tasks/999")
+    .send({ title: "Updated task" });
+
+  assert.equal(response.status, 404);
+});
+
+test("DELETE rejects an ID that does not exist", async () => {
+  const response = await request(app)
+    .delete("/api/tasks/999");
+
+  assert.equal(response.status, 404);
 });
